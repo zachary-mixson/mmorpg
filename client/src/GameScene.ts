@@ -16,15 +16,15 @@ export default class GameScene extends Phaser.Scene {
   update() {
     const speed = 200;
     if (this.cursors.left?.isDown) {
-      this.square.x -= speed * this.game.loop.delta / 1000;
+      this.square.x -= (speed * this.game.loop.delta) / 1000;
     } else if (this.cursors.right?.isDown) {
-      this.square.x += speed * this.game.loop.delta / 1000;
+      this.square.x += (speed * this.game.loop.delta) / 1000;
     }
 
     if (this.cursors.up?.isDown) {
-      this.square.y -= speed * this.game.loop.delta / 1000;
+      this.square.y -= (speed * this.game.loop.delta) / 1000;
     } else if (this.cursors.down?.isDown) {
-      this.square.y += speed * this.game.loop.delta / 1000;
+      this.square.y += (speed * this.game.loop.delta) / 1000;
     }
   }
 }
