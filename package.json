@@ -1,0 +1,15 @@
+{
+  "name": "mmorpg",
+  "private": true,
+  "packageManager": "pnpm@8.7.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx"
+  },
+  "devDependencies": {
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "prettier": "^3.0.0"
+  }
+}
