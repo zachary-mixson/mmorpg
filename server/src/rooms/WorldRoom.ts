@@ -6,12 +6,14 @@ import {
   Input,
   PLAYER_SPEED,
   TICK_RATE,
+  GoldCoin,
 } from '../../../shared/src';
 import { EnemySpawner, Enemy } from '../systems/EnemySpawner';
 
 export class WorldRoom extends Room<WorldState> {
   private inputBuffer: Record<string, Input[]> = {};
   private bulletCounter = 0;
+  private coinCounter = 0;
   private enemySpawner = new EnemySpawner();
 
   onCreate() {
@@ -29,6 +31,7 @@ export class WorldRoom extends Room<WorldState> {
   onJoin(client: Client) {
     const player = new Player();
     player.id = client.sessionId;
+    player.speed = PLAYER_SPEED;
     this.state.players.set(client.sessionId, player);
     this.inputBuffer[client.sessionId] = [];
     this.broadcast('playerJoined', { id: player.id });
@@ -48,16 +51,16 @@ export class WorldRoom extends Room<WorldState> {
       while (buffer.length > 0) {
         const input = buffer.shift()!;
         if (input & Input.LEFT) {
-          player.x -= PLAYER_SPEED * dt;
+          player.x -= player.speed * dt;
         }
         if (input & Input.RIGHT) {
-          player.x += PLAYER_SPEED * dt;
+          player.x += player.speed * dt;
         }
         if (input & Input.UP) {
-          player.y -= PLAYER_SPEED * dt;
+          player.y -= player.speed * dt;
         }
         if (input & Input.DOWN) {
-          player.y += PLAYER_SPEED * dt;
+          player.y += player.speed * dt;
         }
         if (input & Input.SHOOT) {
           const bullet = new Bullet();
@@ -67,6 +70,7 @@ export class WorldRoom extends Room<WorldState> {
           bullet.vy = -600;
           bullet.vx = 0;
           bullet.life = 1;
+          bullet.ownerId = player.id;
           this.state.bullets.set(bullet.id, bullet);
         }
       }
@@ -86,22 +90,43 @@ export class WorldRoom extends Room<WorldState> {
     this.enemySpawner.update(dt, this.state.players);
 
     // handle collisions bullet vs enemy
+    const killed: { enemy: Enemy; ownerId: string }[] = [];
     this.state.bullets.forEach((bullet, id) => {
       this.enemySpawner.enemies.forEach((enemy) => {
         if (this.checkCollision(bullet.x, bullet.y, 5, 5, enemy.x, enemy.y, 20, 20)) {
           enemy.hp -= 10;
           this.state.bullets.delete(id);
+          if (enemy.hp <= 0) {
+            killed.push({ enemy, ownerId: bullet.ownerId });
+          }
         }
       });
     });
 
-    // remove dead enemies and broadcast
-    this.enemySpawner.enemies = this.enemySpawner.enemies.filter((enemy) => {
-      if (enemy.hp <= 0) {
-        this.broadcast('enemyDied', { id: enemy.id });
-        return false;
+    // reward kills and drop loot
+    killed.forEach(({ enemy, ownerId }) => {
+      const player = this.state.players.get(ownerId);
+      if (player) {
+        player.xp += 10;
+        while (player.xp >= 100) {
+          player.xp -= 100;
+          player.level += 1;
+          player.speed *= 1.05;
+        }
       }
-      return true;
+      if (Math.random() < 0.2) {
+        const coin = new GoldCoin();
+        coin.id = `${this.coinCounter++}`;
+        coin.x = enemy.x;
+        coin.y = enemy.y;
+        this.state.coins.set(coin.id, coin);
+      }
+    });
+
+    // remove dead enemies and broadcast
+    this.enemySpawner.enemies = this.enemySpawner.enemies.filter((enemy) => enemy.hp > 0);
+    killed.forEach(({ enemy }) => {
+      this.broadcast('enemyDied', { id: enemy.id });
     });
 
     // enemy vs player collisions
@@ -109,6 +134,16 @@ export class WorldRoom extends Room<WorldState> {
       this.state.players.forEach((player) => {
         if (this.checkCollision(player.x, player.y, 20, 20, enemy.x, enemy.y, 20, 20)) {
           player.hp -= 10;
+        }
+      });
+    });
+
+    // coin pickups
+    this.state.coins.forEach((coin, id) => {
+      this.state.players.forEach((player) => {
+        if (this.checkCollision(player.x, player.y, 20, 20, coin.x, coin.y, 10, 10)) {
+          player.gold += 1;
+          this.state.coins.delete(id);
         }
       });
     });

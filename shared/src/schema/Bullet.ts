@@ -18,4 +18,7 @@ export class Bullet extends Schema {
 
   @type('number')
   life: number = 1;
+
+  @type('string')
+  ownerId: string = '';
 }
