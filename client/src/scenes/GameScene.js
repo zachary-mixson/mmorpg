@@ -2,6 +2,13 @@ import Phaser from "phaser";
 import Player from "../entities/Player.js";
 import Bot from "../entities/Bot.js";
 import { loadStats, toPlayerStats, toBotStats } from "../utils/StatsLoader.js";
+import {
+  generateFXTextures,
+  createThinkingDot,
+  slideInOverlay,
+  fadeInUI,
+  bulletImpact,
+} from "../utils/GameFeel.js";
 
 const ARENA_W = 1600;
 const ARENA_H = 1600;
@@ -18,6 +25,7 @@ export default class GameScene extends Phaser.Scene {
     this.ready = false;
 
     this.generateTextures();
+    generateFXTextures(this);
 
     this.physics.world.setBounds(0, 0, ARENA_W, ARENA_H);
 
@@ -54,6 +62,9 @@ export default class GameScene extends Phaser.Scene {
       botStats,
       () => this.showOutcome("You Win!")
     );
+
+    // Bot thinking indicator
+    createThinkingDot(this, this.bot);
 
     this.ready = true;
 
@@ -261,11 +272,14 @@ export default class GameScene extends Phaser.Scene {
 
   onBulletHit(bullet, entity) {
     const dmg = bullet.damage;
+    const bx = bullet.x;
+    const by = bullet.y;
     bullet.deactivate();
     entity.takeDamage(dmg);
   }
 
   onBulletObstacle(bullet) {
+    bulletImpact(this, bullet.x, bullet.y, 0x888888);
     bullet.deactivate();
   }
 
@@ -273,14 +287,16 @@ export default class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
 
-    this.add
-      .rectangle(400, 300, 800, 600, 0x000000, 0.7)
+    // Background overlay fades in
+    const bg = this.add
+      .rectangle(400, 300, 800, 600, 0x000000, 0)
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setDepth(100);
+    this.tweens.add({ targets: bg, fillAlpha: 0.7, duration: 300 });
 
     const color = message.includes("Win") ? "#00ff66" : "#e94560";
-    this.add
+    const headline = this.add
       .text(400, 260, message, {
         fontSize: "64px",
         color,
@@ -317,6 +333,9 @@ export default class GameScene extends Phaser.Scene {
     menuBtn.on("pointerover", () => menuBtn.setColor("#e94560"));
     menuBtn.on("pointerout", () => menuBtn.setColor("#a0a0cc"));
     menuBtn.on("pointerdown", () => this.scene.start("MenuScene"));
+
+    // Slide in the overlay elements
+    slideInOverlay(this, [headline, restartBtn, menuBtn]);
   }
 
   update(time) {

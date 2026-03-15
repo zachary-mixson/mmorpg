@@ -1,5 +1,12 @@
 import Phaser from "phaser";
 import Bullet from "./Bullet.js";
+import {
+  muzzleFlash,
+  deathExplosion,
+  damageNumber,
+  bulletImpact,
+  lerpHealthBar,
+} from "../utils/GameFeel.js";
 
 const DEFAULTS = {
   moveSpeed: 150,
@@ -33,6 +40,7 @@ export default class Bot extends Phaser.GameObjects.Container {
     this.lastFired = 0;
     this.strafeDir = 0; // -1 left, 0 none, 1 right
     this.nextStrafeChange = 0;
+    this.hpDisplayPct = 1;
 
     // Bot body — red rectangle
     this.body_sprite = scene.add.rectangle(0, 0, 32, 32, 0xff4444);
@@ -127,6 +135,10 @@ export default class Bot extends Phaser.GameObjects.Container {
       Math.cos(-this.rotation) * barOffsetY * -1
     );
     this.hpBar.setPosition(this.hpBarBg.x, this.hpBarBg.y);
+
+    // Smooth health bar lerp
+    const targetPct = this.health / this.maxHealth;
+    this.hpDisplayPct = lerpHealthBar(this.hpBar, this.hpDisplayPct, targetPct);
   }
 
   shoot(time) {
@@ -140,24 +152,23 @@ export default class Bot extends Phaser.GameObjects.Container {
     const tipX = this.x + Math.cos(this.rotation) * 24;
     const tipY = this.y + Math.sin(this.rotation) * 24;
     bullet.fire(tipX, tipY, this.rotation, this.bulletDamage);
+    muzzleFlash(this.scene, tipX, tipY);
   }
 
   takeDamage(amount) {
     if (!this.alive) return;
     this.health = Math.max(0, this.health - amount);
 
-    const pct = this.health / this.maxHealth;
-    this.hpBar.setScale(pct, 1);
-
-    const r = Math.floor(255 * (1 - pct));
-    const g = Math.floor(255 * pct);
-    this.hpBar.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+    // Visual feedback
+    damageNumber(this.scene, this.x, this.y - 20, amount);
+    bulletImpact(this.scene, this.x, this.y, 0xff6644);
 
     if (this.health <= 0) this.die();
   }
 
   die() {
     this.alive = false;
+    deathExplosion(this.scene, this.x, this.y, 0xff4444);
     this.body.setVelocity(0, 0);
     this.body.enable = false;
     this.setVisible(false);
@@ -172,6 +183,7 @@ export default class Bot extends Phaser.GameObjects.Container {
   respawn(x, y) {
     this.setPosition(x, y);
     this.health = this.maxHealth;
+    this.hpDisplayPct = 1;
     this.hpBar.setScale(1, 1);
     this.hpBar.setFillStyle(0x00ff66);
     this.alive = true;

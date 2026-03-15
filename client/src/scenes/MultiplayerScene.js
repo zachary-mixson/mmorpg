@@ -1,6 +1,18 @@
 import Phaser from "phaser";
 import { io } from "socket.io-client";
 import { clearCache } from "../utils/StatsLoader.js";
+import {
+  generateFXTextures,
+  screenShake,
+  bulletImpact,
+  deathExplosion,
+  muzzleFlash,
+  damageNumber,
+  createThinkingDot,
+  slideInOverlay,
+  fadeInUI,
+  lerpHealthBar,
+} from "../utils/GameFeel.js";
 
 const API_URL = "http://localhost:3000";
 const ARENA_W = 1600;
@@ -21,6 +33,10 @@ export default class MultiplayerScene extends Phaser.Scene {
     this.bulletSprites = [];
     this.serverState = null;
     this.matchEnded = false;
+    this.prevHealth = {};      // sid → previous health for damage detection
+    this.prevBotHealth = {};   // sid → previous bot health
+    this.hudLocalHpPct = 1;    // lerped HUD health display
+    this.hudRemoteHpPct = 1;
 
     // Input keys
     this.keys = this.input.keyboard.addKeys({
@@ -31,6 +47,7 @@ export default class MultiplayerScene extends Phaser.Scene {
     });
 
     this.generateTextures();
+    generateFXTextures(this);
     this.showMatchmakingScreen();
     this.connectSocket();
   }
@@ -125,6 +142,9 @@ export default class MultiplayerScene extends Phaser.Scene {
       }
       this.leaveToMenu();
     });
+
+    // Staggered fade-in for matchmaking UI
+    fadeInUI(this, [title, this.mmStatusText, cancelBtn], 0, 150);
   }
 
   hideMatchmakingScreen() {
@@ -278,6 +298,7 @@ export default class MultiplayerScene extends Phaser.Scene {
       hpBar,
       hpBarBg,
       nameText,
+      hpDisplayPct: 1,
       targetX: pData.x,
       targetY: pData.y,
       targetRotation: 0,
@@ -310,12 +331,17 @@ export default class MultiplayerScene extends Phaser.Scene {
       .setOrigin(0.5);
     container.add(label);
 
+    // Bot thinking indicator
+    const thinkDot = createThinkingDot(this, container, -38);
+
     this.botEntities[sid] = {
       sprite: container,
       body,
       barrel,
       hpBar,
       hpBarBg,
+      thinkDot,
+      hpDisplayPct: 1,
       targetX: bData.x,
       targetY: bData.y,
       targetRotation: 0,
@@ -417,6 +443,14 @@ export default class MultiplayerScene extends Phaser.Scene {
     // Store IDs for HUD updates
     this.localSid = this.myId;
     this.remoteSid = remotePlayer ? remotePlayer[0] : null;
+
+    // Staggered fade-in for HUD
+    fadeInUI(this, [
+      this.timerText, this.hudLocalName, this.hudLocalKills,
+      lhpBg, this.hudLocalHpBar,
+      this.hudRemoteName, this.hudRemoteKills,
+      rhpBg, this.hudRemoteHpBar,
+    ], 0, 60);
   }
 
   updateHUD(state) {
@@ -437,19 +471,13 @@ export default class MultiplayerScene extends Phaser.Scene {
     const remotePlayer = state.players[this.remoteSid];
 
     if (localPlayer) {
-      const pct = localPlayer.health / localPlayer.maxHealth;
-      this.hudLocalHpBar.setScale(pct, 1);
-      const r = Math.floor(255 * (1 - pct));
-      const g = Math.floor(255 * pct);
-      this.hudLocalHpBar.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+      const targetPct = localPlayer.health / localPlayer.maxHealth;
+      this.hudLocalHpPct = lerpHealthBar(this.hudLocalHpBar, this.hudLocalHpPct, targetPct);
     }
 
     if (remotePlayer) {
-      const pct = remotePlayer.health / remotePlayer.maxHealth;
-      this.hudRemoteHpBar.setScale(pct, 1);
-      const r = Math.floor(255 * (1 - pct));
-      const g = Math.floor(255 * pct);
-      this.hudRemoteHpBar.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+      const targetPct = remotePlayer.health / remotePlayer.maxHealth;
+      this.hudRemoteHpPct = lerpHealthBar(this.hudRemoteHpBar, this.hudRemoteHpPct, targetPct);
     }
   }
 
@@ -476,14 +504,17 @@ export default class MultiplayerScene extends Phaser.Scene {
       headlineColor = "#e94560";
     }
 
-    // Overlay
-    this.add
-      .rectangle(400, 300, 800, 600, 0x000000, 0.75)
+    // Overlay background fades in
+    const bg = this.add
+      .rectangle(400, 300, 800, 600, 0x000000, 0)
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setDepth(100);
+    this.tweens.add({ targets: bg, fillAlpha: 0.75, duration: 300 });
 
-    this.add
+    const slideElements = [];
+
+    const headlineText = this.add
       .text(400, 180, headline, {
         fontSize: "64px",
         color: headlineColor,
@@ -492,9 +523,10 @@ export default class MultiplayerScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setDepth(101);
+    slideElements.push(headlineText);
 
     if (data.winner && !isTie) {
-      this.add
+      const winnerText = this.add
         .text(400, 240, `Winner: ${data.winner}`, {
           fontSize: "20px",
           color: "#a0a0cc",
@@ -502,6 +534,7 @@ export default class MultiplayerScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setOrigin(0.5)
         .setDepth(101);
+      slideElements.push(winnerText);
     }
 
     // Stats for both players
@@ -511,7 +544,7 @@ export default class MultiplayerScene extends Phaser.Scene {
       const label = isMe ? `${result.username} (You)` : result.username;
       const color = isMe ? "#00ccff" : "#ff6666";
 
-      this.add
+      const statText = this.add
         .text(400, yPos, `${label}  —  ${result.kills} kills  |  +${result.reward} coins`, {
           fontSize: "16px",
           color,
@@ -519,6 +552,7 @@ export default class MultiplayerScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setOrigin(0.5)
         .setDepth(101);
+      slideElements.push(statText);
       yPos += 28;
     }
 
@@ -542,6 +576,7 @@ export default class MultiplayerScene extends Phaser.Scene {
       this.cleanupSocket();
       this.scene.restart();
     });
+    slideElements.push(playAgainBtn);
 
     const menuBtn = this.add
       .text(400, yPos + 50, "[ Main Menu ]", {
@@ -556,6 +591,10 @@ export default class MultiplayerScene extends Phaser.Scene {
     menuBtn.on("pointerover", () => menuBtn.setColor("#e94560"));
     menuBtn.on("pointerout", () => menuBtn.setColor("#a0a0cc"));
     menuBtn.on("pointerdown", () => this.leaveToMenu());
+    slideElements.push(menuBtn);
+
+    // Slide all elements in from above
+    slideInOverlay(this, slideElements);
   }
 
   // ── Entity Rendering from Server State ────────────────────
@@ -570,16 +609,28 @@ export default class MultiplayerScene extends Phaser.Scene {
       entity.targetY = pState.y;
       entity.targetRotation = pState.rotation;
 
-      // Visibility / alive state
-      entity.sprite.setVisible(pState.alive);
+      // Detect damage for effects
+      const prevHp = this.prevHealth[sid];
+      if (prevHp !== undefined && pState.health < prevHp && pState.alive) {
+        const dmg = prevHp - pState.health;
+        damageNumber(this, entity.sprite.x, entity.sprite.y - 20, dmg);
+        bulletImpact(this, entity.sprite.x, entity.sprite.y);
+        if (entity.isLocal) {
+          screenShake(this.cameras.main, 0.004, 80);
+        }
+      }
+      this.prevHealth[sid] = pState.health;
 
-      // Per-entity health bar
+      // Detect death
+      const wasVisible = entity.sprite.visible;
+      entity.sprite.setVisible(pState.alive);
+      if (wasVisible && !pState.alive) {
+        deathExplosion(this, entity.sprite.x, entity.sprite.y, entity.isLocal ? 0x00ccff : 0xff4444);
+      }
+
+      // Health bar lerp target is set; actual lerp happens in lerpEntities
       if (pState.alive) {
-        const pct = pState.health / pState.maxHealth;
-        entity.hpBar.setScale(pct, 1);
-        const r = Math.floor(255 * (1 - pct));
-        const g = Math.floor(255 * pct);
-        entity.hpBar.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+        entity.hpTargetPct = pState.health / pState.maxHealth;
       }
     }
 
@@ -591,19 +642,45 @@ export default class MultiplayerScene extends Phaser.Scene {
       entity.targetX = bState.x;
       entity.targetY = bState.y;
       entity.targetRotation = bState.rotation;
+
+      // Detect bot damage
+      const prevBotHp = this.prevBotHealth[sid];
+      if (prevBotHp !== undefined && bState.health < prevBotHp && bState.alive) {
+        const dmg = prevBotHp - bState.health;
+        damageNumber(this, entity.sprite.x, entity.sprite.y - 20, dmg);
+        bulletImpact(this, entity.sprite.x, entity.sprite.y, 0xff6644);
+      }
+      this.prevBotHealth[sid] = bState.health;
+
+      // Detect bot death
+      const wasVisible = entity.sprite.visible;
       entity.sprite.setVisible(bState.alive);
+      if (wasVisible && !bState.alive) {
+        deathExplosion(this, entity.sprite.x, entity.sprite.y, 0xff4444);
+      }
 
       if (bState.alive) {
-        const pct = bState.health / bState.maxHealth;
-        entity.hpBar.setScale(pct, 1);
-        const r = Math.floor(255 * (1 - pct));
-        const g = Math.floor(255 * pct);
-        entity.hpBar.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+        entity.hpTargetPct = bState.health / bState.maxHealth;
       }
     }
 
+    // Detect muzzle flashes from new bullets near entities
+    this.detectMuzzleFlashes(state);
+
     // Update bullets — sync sprite pool to server bullet list
     this.syncBullets(state.bullets);
+  }
+
+  detectMuzzleFlashes(state) {
+    const currentBulletCount = state.bullets ? state.bullets.length : 0;
+    if (this._prevBulletCount !== undefined && currentBulletCount > this._prevBulletCount) {
+      // New bullets appeared — show muzzle flash at each new bullet's position
+      const newBullets = state.bullets.slice(this._prevBulletCount);
+      for (const b of newBullets) {
+        muzzleFlash(this, b.x, b.y);
+      }
+    }
+    this._prevBulletCount = currentBulletCount;
   }
 
   syncBullets(serverBullets) {
@@ -651,6 +728,11 @@ export default class MultiplayerScene extends Phaser.Scene {
         Math.sin(-s.rotation) * -40,
         -Math.cos(-s.rotation) * -40
       );
+
+      // Smooth health bar lerp
+      if (entity.hpTargetPct !== undefined) {
+        entity.hpDisplayPct = lerpHealthBar(entity.hpBar, entity.hpDisplayPct, entity.hpTargetPct);
+      }
     }
 
     // Lerp bot entities
@@ -670,6 +752,16 @@ export default class MultiplayerScene extends Phaser.Scene {
         -Math.cos(-s.rotation) * barY
       );
       entity.hpBar.setPosition(entity.hpBarBg.x, entity.hpBarBg.y);
+
+      // Smooth health bar lerp
+      if (entity.hpTargetPct !== undefined) {
+        entity.hpDisplayPct = lerpHealthBar(entity.hpBar, entity.hpDisplayPct, entity.hpTargetPct);
+      }
+
+      // Keep thinking dot upright
+      if (entity.thinkDot) {
+        entity.thinkDot.rotation = -s.rotation;
+      }
     }
   }
 

@@ -3,6 +3,7 @@ import Bot from "../entities/Bot.js";
 import BotBrain from "../ai/BotBrain.js";
 import BotController from "../ai/BotController.js";
 import { loadStats, toBotStats } from "../utils/StatsLoader.js";
+import { generateFXTextures, createThinkingDot } from "../utils/GameFeel.js";
 
 const API_URL = "http://localhost:3000";
 const ARENA_W = 800;
@@ -21,6 +22,7 @@ export default class WatchBotScene extends Phaser.Scene {
     this.kills = { blue: 0, red: 0 };
 
     this.generateTextures();
+    generateFXTextures(this);
     this.physics.world.setBounds(0, 0, ARENA_W, ARENA_H);
 
     // Floor
@@ -99,6 +101,10 @@ export default class WatchBotScene extends Phaser.Scene {
     // Set targets cross-referencing
     this.botA.target = this.botB;
     this.botB.target = this.botA;
+
+    // Thinking indicators
+    createThinkingDot(this, this.botA);
+    createThinkingDot(this, this.botB);
 
     // Controllers
     this.controllerA = new BotController(this.brainA, this.botA, this.botB, controllerOptions);

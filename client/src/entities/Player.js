@@ -1,5 +1,13 @@
 import Phaser from "phaser";
 import Bullet from "./Bullet.js";
+import {
+  screenShake,
+  muzzleFlash,
+  deathExplosion,
+  damageNumber,
+  bulletImpact,
+  lerpHealthBar,
+} from "../utils/GameFeel.js";
 
 const DEFAULTS = {
   moveSpeed: 200,
@@ -27,6 +35,7 @@ export default class Player extends Phaser.GameObjects.Container {
     this.shielded = false;
     this.shieldCooldown = 5000;
     this.lastShield = -this.shieldCooldown;
+    this.hpDisplayPct = 1;
 
     // Player body — colored rectangle
     this.body_sprite = scene.add.rectangle(0, 0, 32, 32, 0x00ccff);
@@ -166,6 +175,10 @@ export default class Player extends Phaser.GameObjects.Container {
       Math.cos(-this.rotation) * barOffsetY * -1
     );
     this.hpBar.setPosition(this.hpBarBg.x, this.hpBarBg.y);
+
+    // Smooth health bar lerp
+    const targetPct = this.health / this.maxHealth;
+    this.hpDisplayPct = lerpHealthBar(this.hpBar, this.hpDisplayPct, targetPct);
   }
 
   shoot(scene, time = 0) {
@@ -179,6 +192,7 @@ export default class Player extends Phaser.GameObjects.Container {
     const tipX = this.x + Math.cos(this.rotation) * 24;
     const tipY = this.y + Math.sin(this.rotation) * 24;
     bullet.fire(tipX, tipY, this.rotation, this.bulletDamage);
+    muzzleFlash(scene, tipX, tipY);
   }
 
   takeDamage(amount) {
@@ -186,19 +200,17 @@ export default class Player extends Phaser.GameObjects.Container {
     const dmg = this.shielded ? Math.floor(amount * 0.25) : amount;
     this.health = Math.max(0, this.health - dmg);
 
-    const pct = this.health / this.maxHealth;
-    this.hpBar.setScale(pct, 1);
-
-    // Color shifts from green → red
-    const r = Math.floor(255 * (1 - pct));
-    const g = Math.floor(255 * pct);
-    this.hpBar.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+    // Visual feedback
+    screenShake(this.scene.cameras.main, 0.004, 80);
+    damageNumber(this.scene, this.x, this.y - 20, dmg);
+    bulletImpact(this.scene, this.x, this.y);
 
     if (this.health <= 0) this.die();
   }
 
   die() {
     this.alive = false;
+    deathExplosion(this.scene, this.x, this.y, 0x00ccff);
     this.body.setVelocity(0, 0);
     this.body.enable = false;
     this.setVisible(false);
@@ -223,6 +235,7 @@ export default class Player extends Phaser.GameObjects.Container {
       Phaser.Math.Between(margin, bounds.height - margin)
     );
     this.health = this.maxHealth;
+    this.hpDisplayPct = 1;
     this.hpBar.setScale(1, 1);
     this.hpBar.setFillStyle(0x00ff66);
     this.alive = true;

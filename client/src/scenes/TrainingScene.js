@@ -5,6 +5,7 @@ import BotBrain from "../ai/BotBrain.js";
 import BotController from "../ai/BotController.js";
 import Trainer from "../ai/Trainer.js";
 import { loadStats, toPlayerStats, toBotStats } from "../utils/StatsLoader.js";
+import { generateFXTextures, createThinkingDot } from "../utils/GameFeel.js";
 
 const API_URL = "http://localhost:3000";
 const ARENA_W = 1600;
@@ -36,6 +37,7 @@ export default class TrainingScene extends Phaser.Scene {
     this.trainer = new Trainer();
 
     this.generateTextures();
+    generateFXTextures(this);
     this.physics.world.setBounds(0, 0, ARENA_W, ARENA_H);
 
     // Arena
@@ -105,6 +107,9 @@ export default class TrainingScene extends Phaser.Scene {
 
     // Wire BotController (neural net drives the bot, not rule-based AI)
     this.controller = new BotController(this.brain, this.bot, this.player, controllerOptions);
+
+    // Bot thinking indicator
+    createThinkingDot(this, this.bot);
 
     // --- Collisions ---
 
