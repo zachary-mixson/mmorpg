@@ -46,8 +46,20 @@ export default class MenuScene extends Phaser.Scene {
     trainBtn.on("pointerout", () => trainBtn.setColor("#533483"));
     trainBtn.on("pointerdown", () => this.scene.start("TrainingScene"));
 
+    const shopBtn = this.add
+      .text(400, 380, "[ Shop ]", {
+        fontSize: "28px",
+        color: "#ffcc00",
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    shopBtn.on("pointerover", () => shopBtn.setColor("#e94560"));
+    shopBtn.on("pointerout", () => shopBtn.setColor("#ffcc00"));
+    shopBtn.on("pointerdown", () => this.scene.start("ShopScene"));
+
     const logoutBtn = this.add
-      .text(400, 420, "[ Logout ]", {
+      .text(400, 460, "[ Logout ]", {
         fontSize: "24px",
         color: "#533483",
       })
