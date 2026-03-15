@@ -3,6 +3,7 @@ import Player from "../entities/Player.js";
 import Bot from "../entities/Bot.js";
 import BotBrain from "../ai/BotBrain.js";
 import BotController from "../ai/BotController.js";
+import Trainer from "../ai/Trainer.js";
 
 const API_URL = "http://localhost:3000";
 const ARENA_W = 1600;
@@ -30,6 +31,9 @@ export default class TrainingScene extends Phaser.Scene {
       shotsHit: 0,
     };
 
+    // Trainer (evolutionary manager)
+    this.trainer = new Trainer();
+
     this.generateTextures();
     this.physics.world.setBounds(0, 0, ARENA_W, ARENA_H);
 
@@ -50,17 +54,20 @@ export default class TrainingScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(200);
 
-    // Load brain weights from server
-    let weightsData = null;
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/ai/weights`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      if (json.weights) weightsData = json.weights;
-    } catch {
-      // Use random weights if fetch fails
+    // Get weights: Trainer's evolved weights → server fallback → random init
+    let weightsData = this.trainer.getNextWeights();
+
+    if (!weightsData) {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/ai/weights`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (json.weights) weightsData = json.weights;
+      } catch {
+        // Use random weights if fetch fails
+      }
     }
 
     loadingText.destroy();
@@ -155,6 +162,16 @@ export default class TrainingScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(50);
 
+    const bestF = this.trainer.bestFitness === -Infinity ? "--" : this.trainer.bestFitness;
+    this.genText = this.add
+      .text(790, 10, `Gen: ${this.trainer.generation + 1}  Best: ${bestF}`, {
+        fontSize: "14px",
+        color: "#a0a0cc",
+      })
+      .setScrollFactor(0)
+      .setOrigin(1, 0)
+      .setDepth(50);
+
     // Intercept bot shots to count shotsFired
     const originalShoot = this.bot.shoot.bind(this.bot);
     this.bot.shoot = (time) => {
@@ -228,7 +245,7 @@ export default class TrainingScene extends Phaser.Scene {
     );
   }
 
-  endMatch() {
+  async endMatch() {
     this.matchOver = true;
 
     // Stop entities
@@ -237,7 +254,10 @@ export default class TrainingScene extends Phaser.Scene {
 
     const fitness = this.calculateFitness();
 
-    // Store results for Trainer.js to consume
+    // Submit to Trainer (updates population, saves best to server)
+    await this.trainer.submitResult(fitness, this.brain);
+
+    // Store results for external access
     this.trainingResult = {
       stats: { ...this.stats },
       fitness,
@@ -261,10 +281,20 @@ export default class TrainingScene extends Phaser.Scene {
       .setDepth(100);
 
     this.add
-      .text(400, 140, "Training Complete", {
+      .text(400, 120, "Training Complete", {
         fontSize: "40px",
         color: "#ffffff",
         fontStyle: "bold",
+      })
+      .setScrollFactor(0)
+      .setOrigin(0.5)
+      .setDepth(101);
+
+    const bestF = this.trainer.bestFitness === -Infinity ? "--" : this.trainer.bestFitness;
+    this.add
+      .text(400, 165, `Generation ${this.trainer.generation}  |  Best Fitness: ${bestF}`, {
+        fontSize: "16px",
+        color: "#00ccff",
       })
       .setScrollFactor(0)
       .setOrigin(0.5)
@@ -324,10 +354,7 @@ export default class TrainingScene extends Phaser.Scene {
 
     trainBtn.on("pointerover", () => trainBtn.setColor("#ffffff"));
     trainBtn.on("pointerout", () => trainBtn.setColor("#00ccff"));
-    trainBtn.on("pointerdown", () => {
-      this.brain.dispose();
-      this.scene.restart();
-    });
+    trainBtn.on("pointerdown", () => this.trainAgain());
 
     const saveBtn = this.add
       .text(500, 490, "[ Save & Exit ]", {
@@ -344,22 +371,13 @@ export default class TrainingScene extends Phaser.Scene {
     saveBtn.on("pointerdown", () => this.saveAndExit());
   }
 
-  async saveAndExit() {
-    try {
-      const token = localStorage.getItem("token");
-      const weights = this.brain.getWeights();
-      await fetch(`${API_URL}/ai/weights`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ weights }),
-      });
-    } catch {
-      // Weights save failed — continue to menu anyway
-    }
+  trainAgain() {
+    this.brain.dispose();
+    this.scene.restart();
+  }
 
+  saveAndExit() {
+    // Trainer already saved best weights to server in submitResult()
     this.brain.dispose();
     this.scene.start("MenuScene");
   }
