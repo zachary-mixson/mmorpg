@@ -1,0 +1,20 @@
+{
+  "name": "ai-shooter",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "test:client": "npm test --workspace=client",
+    "test:server": "npm test --workspace=server",
+    "test:all": "npm test --workspace=client && npm test --workspace=server"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
