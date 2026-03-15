@@ -3,6 +3,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import authRoutes from "./routes/auth.js";
 import aiRoutes from "./routes/ai.js";
+import shopRoutes from "./routes/shop.js";
+import gameRoutes from "./routes/game.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,6 +23,8 @@ app.get("/", (_req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/ai", aiRoutes);
+app.use("/shop", shopRoutes);
+app.use("/game", gameRoutes);
 
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
