@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import authRoutes from "./routes/auth.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -11,9 +12,13 @@ const io = new Server(httpServer, {
   },
 });
 
+app.use(express.json());
+
 app.get("/", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use("/auth", authRoutes);
 
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
