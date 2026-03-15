@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { clearCache } from "../utils/StatsLoader.js";
 
 export default class MenuScene extends Phaser.Scene {
   constructor() {
@@ -71,6 +72,7 @@ export default class MenuScene extends Phaser.Scene {
     logoutBtn.on("pointerdown", () => {
       localStorage.removeItem("token");
       localStorage.removeItem("player");
+      clearCache();
       this.scene.start("AuthScene");
     });
   }

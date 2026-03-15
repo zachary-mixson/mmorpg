@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import Player from "../entities/Player.js";
 import Bot from "../entities/Bot.js";
+import { loadStats, toPlayerStats, toBotStats } from "../utils/StatsLoader.js";
 
 const ARENA_W = 1600;
 const ARENA_H = 1600;
@@ -12,8 +13,9 @@ export default class GameScene extends Phaser.Scene {
     super("GameScene");
   }
 
-  create() {
+  async create() {
     this.gameOver = false;
+    this.ready = false;
 
     this.generateTextures();
 
@@ -30,12 +32,17 @@ export default class GameScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup();
     this.createObstacles();
 
+    // Load player stats from server
+    const allStats = await loadStats();
+    const playerStats = toPlayerStats(allStats.player);
+    const { botStats } = toBotStats(allStats.bot);
+
     // Spawn player & bot
     this.player = new Player(
       this,
       ARENA_W / 2 - 200,
       ARENA_H / 2,
-      {},
+      playerStats,
       () => this.showOutcome("You Lose")
     );
 
@@ -44,9 +51,11 @@ export default class GameScene extends Phaser.Scene {
       ARENA_W / 2 + 200,
       ARENA_H / 2,
       this.player,
-      {},
+      botStats,
       () => this.showOutcome("You Win!")
     );
+
+    this.ready = true;
 
     // Bullet ↔ entity collisions
     this.physics.add.overlap(
@@ -311,7 +320,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time) {
-    if (this.gameOver) return;
+    if (!this.ready || this.gameOver) return;
     this.player.update(time);
     this.bot.update(time);
   }

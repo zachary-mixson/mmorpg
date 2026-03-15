@@ -4,6 +4,7 @@ import Bot from "../entities/Bot.js";
 import BotBrain from "../ai/BotBrain.js";
 import BotController from "../ai/BotController.js";
 import Trainer from "../ai/Trainer.js";
+import { loadStats, toPlayerStats, toBotStats } from "../utils/StatsLoader.js";
 
 const API_URL = "http://localhost:3000";
 const ARENA_W = 1600;
@@ -44,9 +45,9 @@ export default class TrainingScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup();
     this.createObstacles();
 
-    // "Loading..." text while fetching weights
+    // "Loading..." text while fetching weights + stats
     const loadingText = this.add
-      .text(400, 300, "Loading AI weights...", {
+      .text(400, 300, "Loading...", {
         fontSize: "24px",
         color: "#a0a0cc",
       })
@@ -54,28 +55,36 @@ export default class TrainingScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(200);
 
-    // Get weights: Trainer's evolved weights → server fallback → random init
+    // Fetch stats and weights in parallel
     let weightsData = this.trainer.getNextWeights();
 
-    if (!weightsData) {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${API_URL}/ai/weights`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json = await res.json();
-        if (json.weights) weightsData = json.weights;
-      } catch {
-        // Use random weights if fetch fails
-      }
-    }
+    const [allStats] = await Promise.all([
+      loadStats(),
+      (async () => {
+        if (!weightsData) {
+          try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_URL}/ai/weights`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const json = await res.json();
+            if (json.weights) weightsData = json.weights;
+          } catch {
+            // Use random weights if fetch fails
+          }
+        }
+      })(),
+    ]);
 
     loadingText.destroy();
+
+    const playerStats = toPlayerStats(allStats.player);
+    const { botStats, controllerOptions } = toBotStats(allStats.bot);
 
     this.brain = new BotBrain(weightsData);
 
     // Spawn player (respawns on death during training)
-    this.player = new Player(this, ARENA_W / 2 - 200, ARENA_H / 2, {}, () => {
+    this.player = new Player(this, ARENA_W / 2 - 200, ARENA_H / 2, playerStats, () => {
       this.stats.botKills++;
       this.respawnEntity(this.player);
     });
@@ -86,7 +95,7 @@ export default class TrainingScene extends Phaser.Scene {
       ARENA_W / 2 + 200,
       ARENA_H / 2,
       this.player,
-      {},
+      botStats,
       () => {
         this.stats.botDeaths++;
         this.respawnEntity(this.bot);
@@ -95,7 +104,7 @@ export default class TrainingScene extends Phaser.Scene {
     );
 
     // Wire BotController (neural net drives the bot, not rule-based AI)
-    this.controller = new BotController(this.brain, this.bot, this.player);
+    this.controller = new BotController(this.brain, this.bot, this.player, controllerOptions);
 
     // --- Collisions ---
 

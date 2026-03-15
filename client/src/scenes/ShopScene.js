@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { clearCache } from "../utils/StatsLoader.js";
 
 const API_URL = "http://localhost:3000";
 
@@ -53,7 +54,10 @@ export default class ShopScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     backBtn.on("pointerover", () => backBtn.setColor("#ffffff"));
     backBtn.on("pointerout", () => backBtn.setColor("#a0a0cc"));
-    backBtn.on("pointerdown", () => this.scene.start("MenuScene"));
+    backBtn.on("pointerdown", () => {
+      clearCache();
+      this.scene.start("MenuScene");
+    });
 
     // Tabs
     this.createTabs();

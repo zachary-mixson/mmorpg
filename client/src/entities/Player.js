@@ -17,9 +17,16 @@ export default class Player extends Phaser.GameObjects.Container {
     this.health = this.maxHealth;
     this.bulletDamage = stats.bulletDamage ?? DEFAULTS.bulletDamage;
     this.fireRate = stats.fireRate ?? DEFAULTS.fireRate;
+    this.hasDash = stats.hasDash ?? false;
+    this.shieldDuration = stats.shieldDuration ?? 0;
     this.alive = true;
     this.lastFired = 0;
     this.onDeath = onDeath;
+    this.dashCooldown = 1500;
+    this.lastDash = -this.dashCooldown;
+    this.shielded = false;
+    this.shieldCooldown = 5000;
+    this.lastShield = -this.shieldCooldown;
 
     // Player body — colored rectangle
     this.body_sprite = scene.add.rectangle(0, 0, 32, 32, 0x00ccff);
@@ -64,6 +71,8 @@ export default class Player extends Phaser.GameObjects.Container {
       a: Phaser.Input.Keyboard.KeyCodes.A,
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D,
+      shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      q: Phaser.Input.Keyboard.KeyCodes.Q,
     });
 
     scene.input.on("pointerdown", (pointer) => {
@@ -91,6 +100,41 @@ export default class Player extends Phaser.GameObjects.Container {
       vx = (vx / len) * this.moveSpeed;
       vy = (vy / len) * this.moveSpeed;
     }
+
+    // Dash (Shift)
+    if (
+      this.hasDash &&
+      Phaser.Input.Keyboard.JustDown(this.keys.shift) &&
+      time - this.lastDash >= this.dashCooldown &&
+      (vx !== 0 || vy !== 0)
+    ) {
+      this.lastDash = time;
+      const dashMultiplier = 3;
+      vx *= dashMultiplier;
+      vy *= dashMultiplier;
+      // Brief visual flash
+      this.body_sprite.setFillStyle(0xffffff);
+      this.scene.time.delayedCall(120, () => {
+        if (this.alive) this.body_sprite.setFillStyle(0x00ccff);
+      });
+    }
+
+    // Shield (Q)
+    if (
+      this.shieldDuration > 0 &&
+      Phaser.Input.Keyboard.JustDown(this.keys.q) &&
+      !this.shielded &&
+      time - this.lastShield >= this.shieldCooldown
+    ) {
+      this.lastShield = time;
+      this.shielded = true;
+      this.body_sprite.setFillStyle(0x00ffff);
+      this.scene.time.delayedCall(this.shieldDuration, () => {
+        this.shielded = false;
+        if (this.alive) this.body_sprite.setFillStyle(0x00ccff);
+      });
+    }
+
     this.body.setVelocity(vx, vy);
 
     // Rotation toward mouse
@@ -139,7 +183,8 @@ export default class Player extends Phaser.GameObjects.Container {
 
   takeDamage(amount) {
     if (!this.alive) return;
-    this.health = Math.max(0, this.health - amount);
+    const dmg = this.shielded ? Math.floor(amount * 0.25) : amount;
+    this.health = Math.max(0, this.health - dmg);
 
     const pct = this.health / this.maxHealth;
     this.hpBar.setScale(pct, 1);

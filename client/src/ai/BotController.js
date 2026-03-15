@@ -19,6 +19,8 @@ export default class BotController {
     this.player = player;
     this.reactionDelay = options.reactionDelay ?? 150;
     this.rotationSpeed = options.rotationSpeed ?? 0.08;
+    this.aggressionMultiplier = options.aggressionMultiplier ?? 1.0;
+    this.accuracyBonus = options.accuracyBonus ?? 1.0;
 
     /** @type {{time: number, outputs: number[]}[]} */
     this.actionQueue = [];
@@ -82,11 +84,19 @@ export default class BotController {
       player.y
     );
 
+    // Accuracy noise: lower accuracy → more positional noise on target perception
+    // accuracyBonus >= 1.0 means no noise; below 1.0 adds jitter
+    const noise = () => {
+      if (this.accuracyBonus >= 1.0) return 0;
+      const maxNoise = (1.0 - this.accuracyBonus) * 0.1;
+      return (Math.random() - 0.5) * 2 * maxNoise;
+    };
+
     return [
       bot.x / ARENA_W,
       bot.y / ARENA_H,
-      player.x / ARENA_W,
-      player.y / ARENA_H,
+      Math.max(0, Math.min(1, player.x / ARENA_W + noise())),
+      Math.max(0, Math.min(1, player.y / ARENA_H + noise())),
       nearestBX / ARENA_W,
       nearestBY / ARENA_H,
       Math.min(nearestBDist / ARENA_DIAG, 1),
@@ -114,7 +124,7 @@ export default class BotController {
 
     const [moveX, moveY, rotate, shoot, strafe] = ready.outputs;
     const bot = this.bot;
-    const speed = bot.moveSpeed;
+    const speed = bot.moveSpeed * this.aggressionMultiplier;
 
     // --- Movement ---
     let vx = moveX * speed;
