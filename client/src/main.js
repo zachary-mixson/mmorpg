@@ -5,6 +5,7 @@ import GameScene from "./scenes/GameScene.js";
 import TrainingScene from "./scenes/TrainingScene.js";
 import ShopScene from "./scenes/ShopScene.js";
 import MultiplayerScene from "./scenes/MultiplayerScene.js";
+import WatchBotScene from "./scenes/WatchBotScene.js";
 
 const config = {
   type: Phaser.AUTO,
@@ -22,7 +23,7 @@ const config = {
       debug: false,
     },
   },
-  scene: [AuthScene, MenuScene, GameScene, TrainingScene, ShopScene, MultiplayerScene],
+  scene: [AuthScene, MenuScene, GameScene, TrainingScene, ShopScene, MultiplayerScene, WatchBotScene],
 };
 
 new Phaser.Game(config);
