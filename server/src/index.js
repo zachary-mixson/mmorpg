@@ -6,6 +6,7 @@ import aiRoutes from "./routes/ai.js";
 import shopRoutes from "./routes/shop.js";
 import gameRoutes from "./routes/game.js";
 import setupGameRooms from "../game/GameRoom.js";
+import { getQueueStatus } from "../game/Matchmaker.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -27,6 +28,13 @@ app.use("/ai", aiRoutes);
 app.use("/shop", shopRoutes);
 app.use("/game", gameRoutes);
 
+app.get("/matchmaking/status", (_req, res) => {
+  res.json(getQueueStatus());
+});
+
+// Set up multiplayer game rooms + matchmaking on /game namespace
+setupGameRooms(io);
+
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
@@ -34,9 +42,6 @@ io.on("connection", (socket) => {
     console.log(`Player disconnected: ${socket.id}`);
   });
 });
-
-// Set up multiplayer game rooms on /game namespace
-setupGameRooms(io);
 
 const PORT = 3000;
 httpServer.listen(PORT, () => {

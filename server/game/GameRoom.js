@@ -1,13 +1,14 @@
 import jwt from "jsonwebtoken";
 import { query } from "../src/db.js";
+import setupMatchmaker from "./Matchmaker.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
 const TICK_RATE = 20; // ticks per second
 const TICK_MS = 1000 / TICK_RATE;
-const MATCH_DURATION = 180_000; // 3 minutes in ms
-const ARENA_W = 1600;
-const ARENA_H = 1600;
+export const MATCH_DURATION = 180_000; // 3 minutes in ms
+export const ARENA_W = 1600;
+export const ARENA_H = 1600;
 const WALL_T = 16;
 const BULLET_SPEED = 600;
 const BULLET_LIFESPAN = 1200;
@@ -29,11 +30,8 @@ const BASE_STATS = {
 };
 
 // In-memory rooms keyed by room ID
-const rooms = new Map();
+export const rooms = new Map();
 let roomIdCounter = 0;
-
-// Queue of players waiting for a match
-let waitingPlayer = null;
 
 /**
  * Load compiled stats for a player (base * upgrade multipliers).
@@ -92,7 +90,7 @@ async function grantReward(playerId, kills, won) {
 /**
  * Create a new game room.
  */
-function createRoom() {
+export function createRoom() {
   const id = `room_${++roomIdCounter}`;
   const room = {
     id,
@@ -111,7 +109,7 @@ function createRoom() {
 /**
  * Initialize a player's state in the room.
  */
-function initPlayerState(room, socketId, userId, username, stats, spawnX, spawnY) {
+export function initPlayerState(room, socketId, userId, username, stats, spawnX, spawnY) {
   room.players[socketId] = {
     id: userId,
     username,
@@ -132,7 +130,7 @@ function initPlayerState(room, socketId, userId, username, stats, spawnX, spawnY
 /**
  * Initialize a bot's state in the room.
  */
-function initBotState(room, socketId, stats, spawnX, spawnY) {
+export function initBotState(room, socketId, stats, spawnX, spawnY) {
   room.bots[socketId] = {
     x: spawnX,
     y: spawnY,
@@ -233,7 +231,7 @@ function updateBot(bot, targetX, targetY, now) {
 /**
  * Start the game loop for a room.
  */
-function startRoom(room, io) {
+export function startRoom(room, io) {
   room.startTime = Date.now();
 
   room.tickInterval = setInterval(() => {
@@ -401,7 +399,7 @@ function startRoom(room, io) {
 /**
  * End the match and distribute rewards.
  */
-async function endMatch(room, io) {
+export async function endMatch(room, io) {
   if (room.matchEnded) return;
   room.matchEnded = true;
 
@@ -409,7 +407,6 @@ async function endMatch(room, io) {
 
   // Determine winner by kills
   const entries = Object.entries(room.scores);
-  let winnerId = null;
   let winnerSocket = null;
   let maxKills = -1;
 
@@ -417,7 +414,6 @@ async function endMatch(room, io) {
     if (score.kills > maxKills) {
       maxKills = score.kills;
       winnerSocket = sid;
-      winnerId = room.players[sid]?.id;
     }
   }
 
@@ -476,6 +472,9 @@ export default function setupGameRooms(io) {
   const gameNsp = io.of("/game");
   gameNsp.use(authenticateSocket);
 
+  // Wire up matchmaking on the same namespace
+  setupMatchmaker(gameNsp);
+
   gameNsp.on("connection", async (socket) => {
     console.log(`Game: ${socket.user.username} connected (${socket.id})`);
 
@@ -494,66 +493,6 @@ export default function setupGameRooms(io) {
     // Store on socket for later use
     socket.stats = stats;
     socket.botWeights = botWeights;
-
-    /**
-     * Player requests to find/join a match.
-     */
-    socket.on("findMatch", () => {
-      // Already in a room?
-      if (socket.roomId) {
-        socket.emit("error", { message: "Already in a match" });
-        return;
-      }
-
-      if (waitingPlayer && waitingPlayer.id !== socket.id && waitingPlayer.connected) {
-        // Match found — create room with both players
-        const room = createRoom();
-        const p1 = waitingPlayer;
-        const p2 = socket;
-        waitingPlayer = null;
-
-        // Spawn positions
-        const spawnX1 = ARENA_W / 2 - 200;
-        const spawnX2 = ARENA_W / 2 + 200;
-        const spawnY = ARENA_H / 2;
-
-        // Init player states
-        initPlayerState(room, p1.id, p1.user.id, p1.user.username, p1.stats, spawnX1, spawnY);
-        initPlayerState(room, p2.id, p2.user.id, p2.user.username, p2.stats, spawnX2, spawnY);
-
-        // Init bot states
-        initBotState(room, p1.id, p1.stats, spawnX1 + 60, spawnY + 60);
-        initBotState(room, p2.id, p2.stats, spawnX2 - 60, spawnY - 60);
-
-        // Join socket room
-        p1.join(room.id);
-        p2.join(room.id);
-        p1.roomId = room.id;
-        p2.roomId = room.id;
-
-        // Notify both players
-        const matchInfo = {
-          roomId: room.id,
-          players: {
-            [p1.id]: { username: p1.user.username },
-            [p2.id]: { username: p2.user.username },
-          },
-          arena: { width: ARENA_W, height: ARENA_H },
-          duration: MATCH_DURATION,
-        };
-
-        p1.emit("matchFound", { ...matchInfo, yourId: p1.id });
-        p2.emit("matchFound", { ...matchInfo, yourId: p2.id });
-
-        // Start the game loop
-        startRoom(room, gameNsp);
-        console.log(`Room ${room.id}: ${p1.user.username} vs ${p2.user.username}`);
-      } else {
-        // No opponent yet — wait
-        waitingPlayer = socket;
-        socket.emit("waiting", { message: "Waiting for opponent..." });
-      }
-    });
 
     /**
      * Player sends movement/rotation update.
@@ -603,25 +542,6 @@ export default function setupGameRooms(io) {
         ownerType: "player",
         spawnTime: now,
       });
-    });
-
-    /**
-     * Player disconnects.
-     */
-    socket.on("disconnect", () => {
-      console.log(`Game: ${socket.user.username} disconnected`);
-
-      // Remove from waiting queue
-      if (waitingPlayer?.id === socket.id) {
-        waitingPlayer = null;
-      }
-
-      // Handle active room
-      const room = rooms.get(socket.roomId);
-      if (room && !room.matchEnded) {
-        // End the match — the remaining player wins
-        endMatch(room, gameNsp);
-      }
     });
   });
 }
