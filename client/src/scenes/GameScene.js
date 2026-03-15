@@ -4,6 +4,8 @@ import Bot from "../entities/Bot.js";
 
 const ARENA_W = 1600;
 const ARENA_H = 1600;
+const WALL_T = 16;
+const SPAWN_CLEAR = 300; // radius around center kept free of obstacles
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -13,19 +15,22 @@ export default class GameScene extends Phaser.Scene {
   create() {
     this.gameOver = false;
 
-    // Generate bullet texture
-    if (!this.textures.exists("bullet")) {
-      const gfx = this.make.graphics({ add: false });
-      gfx.fillStyle(0xffff00);
-      gfx.fillCircle(4, 4, 4);
-      gfx.generateTexture("bullet", 8, 8);
-      gfx.destroy();
-    }
+    this.generateTextures();
 
     this.physics.world.setBounds(0, 0, ARENA_W, ARENA_H);
-    this.drawArena();
 
-    // Spawn player
+    // Tile-sprite floor
+    this.add.tileSprite(0, 0, ARENA_W, ARENA_H, "floor").setOrigin(0, 0);
+
+    // Boundary walls (static group)
+    this.walls = this.physics.add.staticGroup();
+    this.createWalls();
+
+    // Obstacles (static group)
+    this.obstacles = this.physics.add.staticGroup();
+    this.createObstacles();
+
+    // Spawn player & bot
     this.player = new Player(
       this,
       ARENA_W / 2 - 200,
@@ -34,7 +39,6 @@ export default class GameScene extends Phaser.Scene {
       () => this.showOutcome("You Lose")
     );
 
-    // Spawn bot
     this.bot = new Bot(
       this,
       ARENA_W / 2 + 200,
@@ -61,10 +65,189 @@ export default class GameScene extends Phaser.Scene {
       this
     );
 
+    // Bullet ↔ obstacle collisions (destroy bullet)
+    this.physics.add.overlap(
+      this.player.bullets,
+      this.obstacles,
+      this.onBulletObstacle,
+      (bullet) => bullet.active,
+      this
+    );
+    this.physics.add.overlap(
+      this.bot.bullets,
+      this.obstacles,
+      this.onBulletObstacle,
+      (bullet) => bullet.active,
+      this
+    );
+
+    // Bullet ↔ wall collisions
+    this.physics.add.overlap(
+      this.player.bullets,
+      this.walls,
+      this.onBulletObstacle,
+      (bullet) => bullet.active,
+      this
+    );
+    this.physics.add.overlap(
+      this.bot.bullets,
+      this.walls,
+      this.onBulletObstacle,
+      (bullet) => bullet.active,
+      this
+    );
+
+    // Entity ↔ obstacle collisions (can't walk through)
+    this.physics.add.collider(this.player, this.obstacles);
+    this.physics.add.collider(this.bot, this.obstacles);
+    this.physics.add.collider(this.player, this.walls);
+    this.physics.add.collider(this.bot, this.walls);
+
     // Camera
     this.cameras.main.setBounds(0, 0, ARENA_W, ARENA_H);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.input.mouse.disableContextMenu();
+  }
+
+  generateTextures() {
+    // Bullet
+    if (!this.textures.exists("bullet")) {
+      const g = this.make.graphics({ add: false });
+      g.fillStyle(0xffff00);
+      g.fillCircle(4, 4, 4);
+      g.generateTexture("bullet", 8, 8);
+      g.destroy();
+    }
+
+    // Floor tile (80×80 dark grid cell)
+    if (!this.textures.exists("floor")) {
+      const g = this.make.graphics({ add: false });
+      g.fillStyle(0x111122);
+      g.fillRect(0, 0, 80, 80);
+      g.lineStyle(1, 0x1a1a3e, 0.6);
+      g.strokeRect(0, 0, 80, 80);
+      // subtle corner dots
+      g.fillStyle(0x1a1a3e, 0.8);
+      g.fillCircle(0, 0, 2);
+      g.fillCircle(80, 0, 2);
+      g.fillCircle(0, 80, 2);
+      g.fillCircle(80, 80, 2);
+      g.generateTexture("floor", 80, 80);
+      g.destroy();
+    }
+
+    // Obstacle texture (1×1, tinted per-instance)
+    if (!this.textures.exists("obstacle")) {
+      const g = this.make.graphics({ add: false });
+      g.fillStyle(0xffffff);
+      g.fillRect(0, 0, 4, 4);
+      g.generateTexture("obstacle", 4, 4);
+      g.destroy();
+    }
+
+    // Wall texture (1×1)
+    if (!this.textures.exists("wall")) {
+      const g = this.make.graphics({ add: false });
+      g.fillStyle(0xffffff);
+      g.fillRect(0, 0, 4, 4);
+      g.generateTexture("wall", 4, 4);
+      g.destroy();
+    }
+  }
+
+  createWalls() {
+    const wallColor = 0xe94560;
+
+    // Top
+    const top = this.add
+      .tileSprite(ARENA_W / 2, WALL_T / 2, ARENA_W, WALL_T, "wall")
+      .setTint(wallColor);
+    this.walls.add(top);
+
+    // Bottom
+    const bottom = this.add
+      .tileSprite(ARENA_W / 2, ARENA_H - WALL_T / 2, ARENA_W, WALL_T, "wall")
+      .setTint(wallColor);
+    this.walls.add(bottom);
+
+    // Left
+    const left = this.add
+      .tileSprite(WALL_T / 2, ARENA_H / 2, WALL_T, ARENA_H, "wall")
+      .setTint(wallColor);
+    this.walls.add(left);
+
+    // Right
+    const right = this.add
+      .tileSprite(ARENA_W - WALL_T / 2, ARENA_H / 2, WALL_T, ARENA_H, "wall")
+      .setTint(wallColor);
+    this.walls.add(right);
+
+    // Glow lines on inner edges
+    const gfx = this.add.graphics().setDepth(1);
+    gfx.lineStyle(2, 0xe94560, 0.4);
+    const i = WALL_T;
+    gfx.strokeRect(i, i, ARENA_W - i * 2, ARENA_H - i * 2);
+  }
+
+  createObstacles() {
+    const count = Phaser.Math.Between(12, 18);
+    const cx = ARENA_W / 2;
+    const cy = ARENA_H / 2;
+    const placed = [];
+    const margin = WALL_T + 40;
+
+    for (let n = 0; n < count; n++) {
+      const w = Phaser.Math.Between(40, 120);
+      const h = Phaser.Math.Between(40, 120);
+
+      let x, y;
+      let tries = 0;
+      do {
+        x = Phaser.Math.Between(margin + w / 2, ARENA_W - margin - w / 2);
+        y = Phaser.Math.Between(margin + h / 2, ARENA_H - margin - h / 2);
+        tries++;
+      } while (tries < 50 && !this.isValidPlacement(x, y, w, h, cx, cy, placed));
+
+      if (tries >= 50) continue;
+
+      placed.push({ x, y, w, h });
+
+      // Obstacle body
+      const obs = this.add
+        .tileSprite(x, y, w, h, "obstacle")
+        .setTint(0x2a2a4e);
+      this.obstacles.add(obs);
+
+      // Highlight border
+      const border = this.add.graphics().setDepth(1);
+      border.lineStyle(1, 0x3a3a6e, 0.8);
+      border.strokeRect(x - w / 2, y - h / 2, w, h);
+      // Top-edge accent
+      border.lineStyle(2, 0x4a4a8e, 0.5);
+      border.lineBetween(x - w / 2, y - h / 2, x + w / 2, y - h / 2);
+    }
+  }
+
+  isValidPlacement(x, y, w, h, cx, cy, placed) {
+    // Must not overlap center spawn area
+    const dx = Math.abs(x - cx);
+    const dy = Math.abs(y - cy);
+    if (dx < SPAWN_CLEAR + w / 2 && dy < SPAWN_CLEAR + h / 2) {
+      return false;
+    }
+
+    // Must not overlap existing obstacles (with padding)
+    const pad = 30;
+    for (const p of placed) {
+      if (
+        Math.abs(x - p.x) < (w + p.w) / 2 + pad &&
+        Math.abs(y - p.y) < (h + p.h) / 2 + pad
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   onBulletHit(bullet, entity) {
@@ -73,27 +256,23 @@ export default class GameScene extends Phaser.Scene {
     entity.takeDamage(dmg);
   }
 
+  onBulletObstacle(bullet) {
+    bullet.deactivate();
+  }
+
   showOutcome(message) {
     if (this.gameOver) return;
     this.gameOver = true;
 
-    // Dim overlay
-    const overlay = this.add
-      .rectangle(
-        this.cameras.main.scrollX + 400,
-        this.cameras.main.scrollY + 300,
-        800,
-        600,
-        0x000000,
-        0.7
-      )
+    this.add
+      .rectangle(400, 300, 800, 600, 0x000000, 0.7)
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setDepth(100);
 
     const color = message.includes("Win") ? "#00ff66" : "#e94560";
     this.add
-      .text(overlay.x, overlay.y - 40, message, {
+      .text(400, 260, message, {
         fontSize: "64px",
         color,
         fontStyle: "bold",
@@ -103,7 +282,7 @@ export default class GameScene extends Phaser.Scene {
       .setDepth(101);
 
     const restartBtn = this.add
-      .text(overlay.x, overlay.y + 50, "[ Restart ]", {
+      .text(400, 350, "[ Restart ]", {
         fontSize: "32px",
         color: "#ffffff",
       })
@@ -117,7 +296,7 @@ export default class GameScene extends Phaser.Scene {
     restartBtn.on("pointerdown", () => this.scene.restart());
 
     const menuBtn = this.add
-      .text(overlay.x, overlay.y + 110, "[ Menu ]", {
+      .text(400, 410, "[ Menu ]", {
         fontSize: "24px",
         color: "#a0a0cc",
       })
@@ -135,27 +314,5 @@ export default class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.player.update(time);
     this.bot.update(time);
-  }
-
-  drawArena() {
-    const gfx = this.add.graphics();
-
-    gfx.fillStyle(0x111122);
-    gfx.fillRect(0, 0, ARENA_W, ARENA_H);
-
-    gfx.lineStyle(1, 0x1a1a3e, 0.5);
-    const step = 80;
-    for (let x = 0; x <= ARENA_W; x += step) {
-      gfx.moveTo(x, 0);
-      gfx.lineTo(x, ARENA_H);
-    }
-    for (let y = 0; y <= ARENA_H; y += step) {
-      gfx.moveTo(0, y);
-      gfx.lineTo(ARENA_W, y);
-    }
-    gfx.strokePath();
-
-    gfx.lineStyle(3, 0xe94560, 1);
-    gfx.strokeRect(0, 0, ARENA_W, ARENA_H);
   }
 }
