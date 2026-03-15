@@ -11,8 +11,12 @@ CREATE TABLE IF NOT EXISTS ai_weights (
   player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   weights_json JSONB NOT NULL,
   version INTEGER NOT NULL DEFAULT 1,
+  fitness NUMERIC DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Migration: add fitness column if table already exists
+ALTER TABLE ai_weights ADD COLUMN IF NOT EXISTS fitness NUMERIC DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS upgrades (
   id SERIAL PRIMARY KEY,

@@ -123,7 +123,7 @@ export default class Trainer {
   }
 
   /**
-   * POST the top performer's weights to the server.
+   * POST the top performer's weights to the server (with fitness).
    */
   async saveBestToServer() {
     if (this.state.population.length === 0) return;
@@ -137,7 +137,7 @@ export default class Trainer {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ weights: best.weights }),
+        body: JSON.stringify({ weights: best.weights, fitness: best.fitness }),
       });
     } catch {
       // Network error — weights still saved locally

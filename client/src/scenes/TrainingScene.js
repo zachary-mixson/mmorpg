@@ -284,14 +284,14 @@ export default class TrainingScene extends Phaser.Scene {
   showResults(fitness) {
     // Overlay
     this.add
-      .rectangle(400, 300, 800, 600, 0x000000, 0.8)
+      .rectangle(400, 300, 800, 600, 0x000000, 0.85)
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setDepth(100);
 
     this.add
-      .text(400, 120, "Training Complete", {
-        fontSize: "40px",
+      .text(400, 25, "Training Complete", {
+        fontSize: "36px",
         color: "#ffffff",
         fontStyle: "bold",
       })
@@ -301,13 +301,34 @@ export default class TrainingScene extends Phaser.Scene {
 
     const bestF = this.trainer.bestFitness === -Infinity ? "--" : this.trainer.bestFitness;
     this.add
-      .text(400, 165, `Generation ${this.trainer.generation}  |  Best Fitness: ${bestF}`, {
-        fontSize: "16px",
+      .text(400, 60, `Generation ${this.trainer.generation}  |  Best Fitness: ${bestF}`, {
+        fontSize: "14px",
         color: "#00ccff",
       })
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setDepth(101);
+
+    // ── Left column: match stats ────────────────────────────
+
+    const leftX = 200;
+
+    // Stats panel bg
+    const panelGfx = this.add.graphics().setScrollFactor(0).setDepth(101);
+    panelGfx.fillStyle(0x111133, 0.7);
+    panelGfx.fillRoundedRect(15, 82, 370, 220, 6);
+    panelGfx.lineStyle(1, 0x333366, 0.5);
+    panelGfx.strokeRoundedRect(15, 82, 370, 220, 6);
+
+    this.add
+      .text(leftX, 92, "Match Stats", {
+        fontSize: "15px",
+        color: "#ffffff",
+        fontStyle: "bold",
+      })
+      .setScrollFactor(0)
+      .setOrigin(0.5, 0)
+      .setDepth(102);
 
     const acc =
       this.stats.shotsFired > 0
@@ -322,37 +343,68 @@ export default class TrainingScene extends Phaser.Scene {
       `Shots Fired:     ${this.stats.shotsFired}`,
       `Shots Hit:       ${this.stats.shotsHit}`,
       `Accuracy:        ${acc}%`,
-      ``,
-      `Fitness Score:   ${fitness}`,
     ];
 
     this.add
-      .text(400, 300, lines.join("\n"), {
-        fontSize: "18px",
+      .text(leftX, 190, lines.join("\n"), {
+        fontSize: "14px",
         color: "#a0a0cc",
         fontFamily: "monospace",
-        lineSpacing: 6,
+        lineSpacing: 4,
       })
       .setScrollFactor(0)
       .setOrigin(0.5)
-      .setDepth(101);
+      .setDepth(102);
 
-    // Fitness color
+    // Fitness score
     const fitnessColor =
       fitness > 200 ? "#00ff66" : fitness > 0 ? "#ffcc00" : "#e94560";
+
     this.add
-      .text(400, 420, `${fitness}`, {
-        fontSize: "48px",
+      .text(leftX, 270, `Fitness: ${fitness}`, {
+        fontSize: "20px",
         color: fitnessColor,
         fontStyle: "bold",
       })
       .setScrollFactor(0)
-      .setOrigin(0.5)
-      .setDepth(101);
+      .setOrigin(0.5, 0)
+      .setDepth(102);
 
-    // Buttons
+    // ── Right column: version history ───────────────────────
+
+    const rightX = 600;
+
+    panelGfx.fillStyle(0x111133, 0.7);
+    panelGfx.fillRoundedRect(415, 82, 370, 220, 6);
+    panelGfx.lineStyle(1, 0x333366, 0.5);
+    panelGfx.strokeRoundedRect(415, 82, 370, 220, 6);
+
+    this.add
+      .text(rightX, 92, "Version History", {
+        fontSize: "15px",
+        color: "#ffffff",
+        fontStyle: "bold",
+      })
+      .setScrollFactor(0)
+      .setOrigin(0.5, 0)
+      .setDepth(102);
+
+    this.versionHistoryItems = [];
+    this.versionStatusText = this.add
+      .text(rightX, 200, "Loading...", {
+        fontSize: "13px",
+        color: "#666688",
+      })
+      .setScrollFactor(0)
+      .setOrigin(0.5)
+      .setDepth(102);
+
+    this.fetchVersionHistory();
+
+    // ── Bottom buttons ──────────────────────────────────────
+
     const trainBtn = this.add
-      .text(300, 490, "[ Train Again ]", {
+      .text(300, 560, "[ Train Again ]", {
         fontSize: "24px",
         color: "#00ccff",
       })
@@ -366,7 +418,7 @@ export default class TrainingScene extends Phaser.Scene {
     trainBtn.on("pointerdown", () => this.trainAgain());
 
     const saveBtn = this.add
-      .text(500, 490, "[ Save & Exit ]", {
+      .text(500, 560, "[ Save & Exit ]", {
         fontSize: "24px",
         color: "#00ff66",
       })
@@ -378,6 +430,182 @@ export default class TrainingScene extends Phaser.Scene {
     saveBtn.on("pointerover", () => saveBtn.setColor("#ffffff"));
     saveBtn.on("pointerout", () => saveBtn.setColor("#00ff66"));
     saveBtn.on("pointerdown", () => this.saveAndExit());
+  }
+
+  // ── Version History ─────────────────────────────────────
+
+  async fetchVersionHistory() {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/ai/weights/history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      this.renderVersionHistory(data.versions.slice(0, 5));
+    } catch {
+      if (this.versionStatusText) {
+        this.versionStatusText.setText("Could not load version history.");
+      }
+    }
+  }
+
+  renderVersionHistory(versions) {
+    if (this.versionStatusText) {
+      this.versionStatusText.destroy();
+      this.versionStatusText = null;
+    }
+
+    // Clean up any previous items
+    for (const item of this.versionHistoryItems) {
+      item.destroy();
+    }
+    this.versionHistoryItems = [];
+
+    if (versions.length === 0) {
+      const t = this.add
+        .text(600, 180, "No saved versions yet.", {
+          fontSize: "13px",
+          color: "#666688",
+        })
+        .setScrollFactor(0)
+        .setOrigin(0.5)
+        .setDepth(102);
+      this.versionHistoryItems.push(t);
+      return;
+    }
+
+    const startY = 116;
+    const rowH = 36;
+
+    // Column headers
+    const header = this.add
+      .text(435, startY, "Ver   Fitness         Saved", {
+        fontSize: "11px",
+        color: "#666688",
+        fontFamily: "monospace",
+      })
+      .setScrollFactor(0)
+      .setDepth(102);
+    this.versionHistoryItems.push(header);
+
+    versions.forEach((ver, i) => {
+      const y = startY + 18 + i * rowH;
+      const isLatest = i === 0;
+      const fitnessStr = ver.fitness != null ? ver.fitness.toString() : "--";
+      const fitnessColor =
+        ver.fitness != null
+          ? ver.fitness > 200
+            ? "#00ff66"
+            : ver.fitness > 0
+              ? "#ffcc00"
+              : "#e94560"
+          : "#666688";
+
+      const date = new Date(ver.created_at);
+      const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, "0")}`;
+
+      // Version number
+      const verText = this.add
+        .text(435, y, `v${ver.version}`, {
+          fontSize: "13px",
+          color: isLatest ? "#00ccff" : "#a0a0cc",
+          fontStyle: isLatest ? "bold" : "normal",
+        })
+        .setScrollFactor(0)
+        .setDepth(102);
+      this.versionHistoryItems.push(verText);
+
+      // Fitness
+      const fitText = this.add
+        .text(480, y, fitnessStr, {
+          fontSize: "13px",
+          color: fitnessColor,
+        })
+        .setScrollFactor(0)
+        .setDepth(102);
+      this.versionHistoryItems.push(fitText);
+
+      // Timestamp
+      const timeText = this.add
+        .text(560, y, timeStr, {
+          fontSize: "11px",
+          color: "#555577",
+        })
+        .setScrollFactor(0)
+        .setDepth(102);
+      this.versionHistoryItems.push(timeText);
+
+      // Rollback button (not for latest version)
+      if (!isLatest) {
+        const rbBtn = this.add
+          .text(690, y, "Rollback", {
+            fontSize: "12px",
+            color: "#e94560",
+          })
+          .setScrollFactor(0)
+          .setOrigin(0, 0)
+          .setDepth(102)
+          .setInteractive({ useHandCursor: true });
+        this.versionHistoryItems.push(rbBtn);
+
+        rbBtn.on("pointerover", () => rbBtn.setColor("#ff6680"));
+        rbBtn.on("pointerout", () => rbBtn.setColor("#e94560"));
+        rbBtn.on("pointerdown", () => this.rollbackToVersion(ver.version));
+      } else {
+        const badge = this.add
+          .text(690, y, "current", {
+            fontSize: "11px",
+            color: "#00ccff",
+          })
+          .setScrollFactor(0)
+          .setDepth(102);
+        this.versionHistoryItems.push(badge);
+      }
+    });
+  }
+
+  async rollbackToVersion(version) {
+    // Disable further rollbacks while in progress
+    for (const item of this.versionHistoryItems) {
+      item.disableInteractive?.();
+    }
+
+    const statusText = this.add
+      .text(600, 290, "Rolling back...", {
+        fontSize: "13px",
+        color: "#ffcc00",
+      })
+      .setScrollFactor(0)
+      .setOrigin(0.5)
+      .setDepth(103);
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/ai/weights/rollback/${version}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Rollback failed");
+      }
+
+      const data = await res.json();
+      statusText.setText(`Rolled back to v${version} (now v${data.version})`);
+      statusText.setColor("#00ff66");
+
+      // Refresh the history panel
+      this.time.delayedCall(800, () => {
+        statusText.destroy();
+        this.fetchVersionHistory();
+      });
+    } catch (err) {
+      statusText.setText(err.message);
+      statusText.setColor("#e94560");
+      this.time.delayedCall(2000, () => statusText.destroy());
+    }
   }
 
   trainAgain() {
