@@ -32,6 +32,7 @@ export default class MenuScene extends Phaser.Scene {
 
     playBtn.on("pointerover", () => playBtn.setColor("#e94560"));
     playBtn.on("pointerout", () => playBtn.setColor("#0f3460"));
+    playBtn.on("pointerdown", () => this.scene.start("GameScene"));
 
     const logoutBtn = this.add
       .text(400, 380, "[ Logout ]", {

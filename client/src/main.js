@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import AuthScene from "./scenes/AuthScene.js";
 import MenuScene from "./scenes/MenuScene.js";
+import GameScene from "./scenes/GameScene.js";
 
 const config = {
   type: Phaser.AUTO,
@@ -11,7 +12,14 @@ const config = {
   dom: {
     createContainer: true,
   },
-  scene: [AuthScene, MenuScene],
+  physics: {
+    default: "arcade",
+    arcade: {
+      gravity: { y: 0 },
+      debug: false,
+    },
+  },
+  scene: [AuthScene, MenuScene, GameScene],
 };
 
 new Phaser.Game(config);
