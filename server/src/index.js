@@ -5,6 +5,7 @@ import authRoutes from "./routes/auth.js";
 import aiRoutes from "./routes/ai.js";
 import shopRoutes from "./routes/shop.js";
 import gameRoutes from "./routes/game.js";
+import setupGameRooms from "../game/GameRoom.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -33,6 +34,9 @@ io.on("connection", (socket) => {
     console.log(`Player disconnected: ${socket.id}`);
   });
 });
+
+// Set up multiplayer game rooms on /game namespace
+setupGameRooms(io);
 
 const PORT = 3000;
 httpServer.listen(PORT, () => {
