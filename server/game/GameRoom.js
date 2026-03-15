@@ -162,23 +162,29 @@ function dist(x1, y1, x2, y2) {
 }
 
 /**
- * Validate a position update from a client.
- * Rejects moves that exceed the player's max speed per tick.
+ * Apply player input to compute authoritative position for one tick.
  */
-function validateMove(player, newX, newY) {
-  const maxDist = (player.moveSpeed * 3.5) / TICK_RATE; // 3.5x to allow dash
-  const moved = dist(player.x, player.y, newX, newY);
+function applyPlayerInput(player) {
+  if (!player.alive) return;
 
-  if (moved > maxDist) {
-    return false;
+  let dx = player.inputDx || 0;
+  let dy = player.inputDy || 0;
+
+  // Normalize direction
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len > 0) {
+    dx = (dx / len) * player.moveSpeed;
+    dy = (dy / len) * player.moveSpeed;
   }
+
+  const step = 1 / TICK_RATE;
+  player.x += dx * step;
+  player.y += dy * step;
 
   // Clamp to arena bounds
   const margin = WALL_T + 16;
-  const cx = clamp(newX, margin, ARENA_W - margin);
-  const cy = clamp(newY, margin, ARENA_H - margin);
-
-  return { x: cx, y: cy };
+  player.x = clamp(player.x, margin, ARENA_W - margin);
+  player.y = clamp(player.y, margin, ARENA_H - margin);
 }
 
 /**
@@ -247,6 +253,29 @@ export function startRoom(room, io) {
     }
 
     const playerEntries = Object.entries(room.players);
+
+    // Apply player inputs authoritatively
+    for (const [, player] of playerEntries) {
+      applyPlayerInput(player);
+
+      // Server-side shooting from input flag
+      if (player.alive && player.inputShooting) {
+        if (now - player.lastFired >= player.fireRate) {
+          player.lastFired = now;
+          const angle = player.rotation;
+          room.bullets.push({
+            x: player.x + Math.cos(angle) * 24,
+            y: player.y + Math.sin(angle) * 24,
+            vx: Math.cos(angle) * BULLET_SPEED,
+            vy: Math.sin(angle) * BULLET_SPEED,
+            damage: player.bulletDamage,
+            owner: playerEntries.find(([, p]) => p === player)[0],
+            ownerType: "player",
+            spawnTime: now,
+          });
+        }
+      }
+    }
 
     // Update bots — each bot targets the opposing player
     for (const [socketId, bot] of Object.entries(room.bots)) {
@@ -495,53 +524,21 @@ export default function setupGameRooms(io) {
     socket.botWeights = botWeights;
 
     /**
-     * Player sends movement/rotation update.
+     * Player sends input vector + rotation + shooting flag.
+     * Server applies movement authoritatively in the tick loop.
      */
-    socket.on("playerUpdate", (data) => {
+    socket.on("playerInput", (data) => {
       const room = rooms.get(socket.roomId);
       if (!room || room.matchEnded) return;
 
       const player = room.players[socket.id];
       if (!player || !player.alive) return;
 
-      // Validate movement
-      const result = validateMove(player, data.x, data.y);
-      if (result === false) {
-        // Reject — send correction
-        socket.emit("positionCorrection", { x: player.x, y: player.y });
-        return;
-      }
-
-      player.x = result.x;
-      player.y = result.y;
-      player.rotation = data.rotation ?? player.rotation;
-    });
-
-    /**
-     * Player fires a bullet.
-     */
-    socket.on("shoot", (data) => {
-      const room = rooms.get(socket.roomId);
-      if (!room || room.matchEnded) return;
-
-      const player = room.players[socket.id];
-      if (!player || !player.alive) return;
-
-      const now = Date.now();
-      if (now - player.lastFired < player.fireRate) return;
-      player.lastFired = now;
-
-      const angle = data.angle ?? player.rotation;
-      room.bullets.push({
-        x: player.x + Math.cos(angle) * 24,
-        y: player.y + Math.sin(angle) * 24,
-        vx: Math.cos(angle) * BULLET_SPEED,
-        vy: Math.sin(angle) * BULLET_SPEED,
-        damage: player.bulletDamage,
-        owner: socket.id,
-        ownerType: "player",
-        spawnTime: now,
-      });
+      // Store inputs — applied on next tick
+      player.inputDx = typeof data.dx === "number" ? clamp(data.dx, -1, 1) : 0;
+      player.inputDy = typeof data.dy === "number" ? clamp(data.dy, -1, 1) : 0;
+      player.rotation = typeof data.rotation === "number" ? data.rotation : player.rotation;
+      player.inputShooting = !!data.shooting;
     });
   });
 }

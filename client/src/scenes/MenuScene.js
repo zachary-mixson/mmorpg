@@ -35,8 +35,20 @@ export default class MenuScene extends Phaser.Scene {
     playBtn.on("pointerout", () => playBtn.setColor("#0f3460"));
     playBtn.on("pointerdown", () => this.scene.start("GameScene"));
 
+    const multiBtn = this.add
+      .text(400, 340, "[ Multiplayer ]", {
+        fontSize: "28px",
+        color: "#00ccff",
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    multiBtn.on("pointerover", () => multiBtn.setColor("#e94560"));
+    multiBtn.on("pointerout", () => multiBtn.setColor("#00ccff"));
+    multiBtn.on("pointerdown", () => this.scene.start("MultiplayerScene"));
+
     const trainBtn = this.add
-      .text(400, 340, "[ Train Bot ]", {
+      .text(400, 380, "[ Train Bot ]", {
         fontSize: "28px",
         color: "#533483",
       })
@@ -48,7 +60,7 @@ export default class MenuScene extends Phaser.Scene {
     trainBtn.on("pointerdown", () => this.scene.start("TrainingScene"));
 
     const shopBtn = this.add
-      .text(400, 380, "[ Shop ]", {
+      .text(400, 420, "[ Shop ]", {
         fontSize: "28px",
         color: "#ffcc00",
       })
@@ -60,7 +72,7 @@ export default class MenuScene extends Phaser.Scene {
     shopBtn.on("pointerdown", () => this.scene.start("ShopScene"));
 
     const logoutBtn = this.add
-      .text(400, 460, "[ Logout ]", {
+      .text(400, 500, "[ Logout ]", {
         fontSize: "24px",
         color: "#533483",
       })
