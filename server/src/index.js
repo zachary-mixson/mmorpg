@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import authRoutes from "./routes/auth.js";
+import aiRoutes from "./routes/ai.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -19,6 +20,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/auth", authRoutes);
+app.use("/ai", aiRoutes);
 
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);

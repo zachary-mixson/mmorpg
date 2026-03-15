@@ -34,8 +34,20 @@ export default class MenuScene extends Phaser.Scene {
     playBtn.on("pointerout", () => playBtn.setColor("#0f3460"));
     playBtn.on("pointerdown", () => this.scene.start("GameScene"));
 
+    const trainBtn = this.add
+      .text(400, 340, "[ Train Bot ]", {
+        fontSize: "28px",
+        color: "#533483",
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    trainBtn.on("pointerover", () => trainBtn.setColor("#e94560"));
+    trainBtn.on("pointerout", () => trainBtn.setColor("#533483"));
+    trainBtn.on("pointerdown", () => this.scene.start("TrainingScene"));
+
     const logoutBtn = this.add
-      .text(400, 380, "[ Logout ]", {
+      .text(400, 420, "[ Logout ]", {
         fontSize: "24px",
         color: "#533483",
       })
